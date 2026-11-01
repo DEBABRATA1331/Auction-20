@@ -1,20 +1,28 @@
 class SoundEngine {
   private ctx: AudioContext | null = null;
   public enabled: boolean = true;
+  public musicEnabled: boolean = false;
+  private bgmInterval: ReturnType<typeof setInterval> | null = null;
+  private bgmGain: GainNode | null = null;
 
   constructor() {
     try {
-      const saved = localStorage.getItem('a20-sound');
-      if (saved !== null) {
-        this.enabled = saved === 'true';
+      const savedSound = localStorage.getItem('a20-sound');
+      if (savedSound !== null) {
+        this.enabled = savedSound === 'true';
+      }
+      const savedMusic = localStorage.getItem('a20-music');
+      if (savedMusic !== null) {
+        this.musicEnabled = savedMusic === 'true';
       }
     } catch {
       this.enabled = true;
+      this.musicEnabled = false;
     }
   }
 
   private getContext(): AudioContext | null {
-    if (!this.enabled) return null;
+    if (!this.enabled && !this.musicEnabled) return null;
     if (!this.ctx) {
       const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       if (AudioCtx) {
@@ -34,12 +42,105 @@ class SoundEngine {
     } catch {
       // ignore
     }
+    if (!this.enabled && this.musicEnabled) {
+      this.stopBgm();
+    }
     return this.enabled;
+  }
+
+  public toggleMusic(): boolean {
+    this.musicEnabled = !this.musicEnabled;
+    try {
+      localStorage.setItem('a20-music', String(this.musicEnabled));
+    } catch {
+      // ignore
+    }
+
+    if (this.musicEnabled) {
+      this.startBgm();
+    } else {
+      this.stopBgm();
+    }
+    return this.musicEnabled;
+  }
+
+  public startBgm() {
+    const ctx = this.getContext();
+    if (!ctx) return;
+    this.stopBgm();
+
+    this.bgmGain = ctx.createGain();
+    this.bgmGain.gain.setValueAtTime(0.04, ctx.currentTime);
+    this.bgmGain.connect(ctx.destination);
+
+    // Upbeat Cartoon & Game Show Chords: [C, G, Am, F]
+    const chords = [
+      [261.63, 329.63, 392.0],  // C major
+      [196.00, 246.94, 293.66], // G major
+      [220.00, 261.63, 329.63], // A minor
+      [174.61, 220.00, 261.63], // F major
+    ];
+
+    let step = 0;
+    const playMeasure = () => {
+      if (!this.musicEnabled || !this.ctx || !this.bgmGain) return;
+      const now = this.ctx.currentTime;
+      const chord = chords[step % chords.length];
+      const bassFreq = chord[0] / 2; // Bass note 1 octave down
+
+      // Play soft bass pulse
+      const bassOsc = this.ctx.createOscillator();
+      const bassGain = this.ctx.createGain();
+      bassOsc.type = 'triangle';
+      bassOsc.frequency.setValueAtTime(bassFreq, now);
+      bassGain.gain.setValueAtTime(0.06, now);
+      bassGain.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+      bassOsc.connect(bassGain);
+      bassGain.connect(this.bgmGain);
+      bassOsc.start(now);
+      bassOsc.stop(now + 0.45);
+
+      // Play arpeggiated melodic notes
+      chord.forEach((freq, noteIdx) => {
+        if (!this.ctx || !this.bgmGain) return;
+        const noteTime = now + noteIdx * 0.14;
+        const osc = this.ctx.createOscillator();
+        const g = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, noteTime);
+        g.gain.setValueAtTime(0.035, noteTime);
+        g.gain.exponentialRampToValueAtTime(0.0005, noteTime + 0.28);
+        osc.connect(g);
+        g.connect(this.bgmGain);
+        osc.start(noteTime);
+        osc.stop(noteTime + 0.28);
+      });
+
+      step++;
+    };
+
+    playMeasure();
+    this.bgmInterval = setInterval(playMeasure, 600);
+  }
+
+  public stopBgm() {
+    if (this.bgmInterval) {
+      clearInterval(this.bgmInterval);
+      this.bgmInterval = null;
+    }
+    if (this.bgmGain) {
+      try {
+        this.bgmGain.disconnect();
+      } catch {
+        // ignore
+      }
+      this.bgmGain = null;
+    }
   }
 
   public click() {
     const ctx = this.getContext();
-    if (!ctx) return;
+    if (!ctx || !this.enabled) return;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = 'sine';
@@ -55,7 +156,7 @@ class SoundEngine {
 
   public step() {
     const ctx = this.getContext();
-    if (!ctx) return;
+    if (!ctx || !this.enabled) return;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = 'triangle';
@@ -71,9 +172,8 @@ class SoundEngine {
 
   public bid() {
     const ctx = this.getContext();
-    if (!ctx) return;
+    if (!ctx || !this.enabled) return;
     const now = ctx.currentTime;
-    // Two fast rising notes
     [520, 780].forEach((freq, idx) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
@@ -88,12 +188,29 @@ class SoundEngine {
     });
   }
 
+  public tension() {
+    const ctx = this.getContext();
+    if (!ctx || !this.enabled) return;
+    const now = ctx.currentTime;
+    // Low dramatic suspense hum
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(90, now);
+    osc.frequency.exponentialRampToValueAtTime(140, now + 0.3);
+    gain.gain.setValueAtTime(0.08, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.35);
+  }
+
   public gavel() {
     const ctx = this.getContext();
-    if (!ctx) return;
+    if (!ctx || !this.enabled) return;
     const now = ctx.currentTime;
     
-    // Low frequency punch
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = 'triangle';
@@ -106,7 +223,6 @@ class SoundEngine {
     osc.start(now);
     osc.stop(now + 0.14);
 
-    // Noise burst for wood slap
     const bufferSize = ctx.sampleRate * 0.06;
     const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
     const data = buffer.getChannelData(0);
@@ -126,9 +242,8 @@ class SoundEngine {
   public sold() {
     this.gavel();
     const ctx = this.getContext();
-    if (!ctx) return;
+    if (!ctx || !this.enabled) return;
     const now = ctx.currentTime + 0.08;
-    // Chime chords
     [523.25, 659.25, 783.99, 1046.5].forEach((freq, idx) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
@@ -145,7 +260,7 @@ class SoundEngine {
 
   public skip() {
     const ctx = this.getContext();
-    if (!ctx) return;
+    if (!ctx || !this.enabled) return;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = 'sine';
@@ -161,7 +276,7 @@ class SoundEngine {
 
   public undo() {
     const ctx = this.getContext();
-    if (!ctx) return;
+    if (!ctx || !this.enabled) return;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = 'sine';
@@ -177,7 +292,7 @@ class SoundEngine {
 
   public drumroll(durationMs = 2200): () => void {
     const ctx = this.getContext();
-    if (!ctx) return () => {};
+    if (!ctx || !this.enabled) return () => {};
     let isCancelled = false;
     const startTime = Date.now();
 
@@ -214,7 +329,7 @@ class SoundEngine {
 
   public fanfare() {
     const ctx = this.getContext();
-    if (!ctx) return;
+    if (!ctx || !this.enabled) return;
     const now = ctx.currentTime;
     const notes = [
       { f: 523.25, t: 0.0, d: 0.15 },  // C5

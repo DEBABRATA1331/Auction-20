@@ -22,6 +22,7 @@ interface SavedState {
 
 export const App: React.FC = () => {
   const [soundEnabled, setSoundEnabled] = useState<boolean>(sound.enabled);
+  const [musicEnabled, setMusicEnabled] = useState<boolean>(sound.musicEnabled);
 
   // Initialize state from localStorage or fresh empty state
   const [step, setStep] = useState<number>(0);
@@ -78,6 +79,11 @@ export const App: React.FC = () => {
     setSoundEnabled(next);
   };
 
+  const handleToggleMusic = () => {
+    const next = sound.toggleMusic();
+    setMusicEnabled(next);
+  };
+
   const handleResetGame = () => {
     if (window.confirm('Reset the current auction and start fresh?')) {
       sound.click();
@@ -102,7 +108,7 @@ export const App: React.FC = () => {
     if (targetStep === 0) return true;
     if (targetStep === 1) return players.length >= 2;
     if (targetStep === 2) return players.every(p => p.roster.length >= 5);
-    if (targetStep === 3) return players.every(p => p.roster.length >= 5);
+    if (targetStep === 3) return players.every(p => p.roster.length >= 5 && p.active && p.active.length === 5);
     return false;
   };
 
@@ -113,7 +119,9 @@ export const App: React.FC = () => {
         onSelectStep={setStep}
         canNavigateToStep={canNavigateToStep}
         soundEnabled={soundEnabled}
+        musicEnabled={musicEnabled}
         onToggleSound={handleToggleSound}
+        onToggleMusic={handleToggleMusic}
         onResetGame={handleResetGame}
       />
 

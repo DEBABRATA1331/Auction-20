@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Player } from '../types/game';
 import { CHAR_BY_ID, money, MIN_TEAM_SIZE, purse } from '../game/rules';
 import { CharacterImage } from './CharacterImage';
 import { PlayerAvatar } from './ui';
-import { Shield, ArrowRight, Sparkles, Check, AlertCircle } from 'lucide-react';
+import { Shield, ArrowRight, Sparkles, Check, AlertCircle, Star } from 'lucide-react';
 import { sound } from '../utils/audio';
 
 interface TeamsStepProps {
@@ -14,21 +14,78 @@ interface TeamsStepProps {
 
 export const TeamsStep: React.FC<TeamsStepProps> = ({
   players,
+  onUpdatePlayers,
   onNext,
 }) => {
   const [selectedPlayerId, setSelectedPlayerId] = useState<string>(players[0]?.id || '');
 
+  // Ensure every player defaults to 5 selected if not yet initialized
+  useEffect(() => {
+    let changed = false;
+    const updated = players.map(p => {
+      if (p.roster.length >= MIN_TEAM_SIZE && (!p.active || p.active.length !== 5)) {
+        changed = true;
+        return {
+          ...p,
+          active: p.roster.slice(0, 5),
+        };
+      }
+      return p;
+    });
+    if (changed) {
+      onUpdatePlayers(updated);
+    }
+  }, [players, onUpdatePlayers]);
+
   const activePlayer = players.find(p => p.id === selectedPlayerId) || players[0];
 
-  // All players must have at least 5 heroes
-  const allReady = players.every(p => p.roster.length >= MIN_TEAM_SIZE);
+  const handleToggleCharacter = (charId: string) => {
+    if (!activePlayer) return;
+    sound.click();
+
+    const isCore = activePlayer.active.includes(charId);
+    let newActive: string[];
+
+    if (isCore) {
+      // Remove from core
+      newActive = activePlayer.active.filter(id => id !== charId);
+    } else {
+      // Add to core if under 5
+      if (activePlayer.active.length < 5) {
+        newActive = [...activePlayer.active, charId];
+      } else {
+        // If already 5, replace the last core member with this one
+        newActive = [...activePlayer.active.slice(0, 4), charId];
+      }
+    }
+
+    const updated = players.map(p =>
+      p.id === activePlayer.id ? { ...p, active: newActive } : p
+    );
+    onUpdatePlayers(updated);
+  };
+
+  const handleSelectFirst5 = () => {
+    if (!activePlayer) return;
+    sound.bid();
+    const newActive = activePlayer.roster.slice(0, 5);
+    const updated = players.map(p =>
+      p.id === activePlayer.id ? { ...p, active: newActive } : p
+    );
+    onUpdatePlayers(updated);
+  };
+
+  // Every player must have exactly 5 in active Best 5 Core
+  const allComplete = players.every(p => p.roster.length >= 5 && p.active && p.active.length === 5);
+
+  const bonusCount = activePlayer ? Math.max(0, activePlayer.roster.length - (activePlayer.active?.length || 0)) : 0;
 
   return (
     <div className="teams-page fade-in">
       <div className="section-head">
-        <h1 className="section-title">SQUAD AUDIT</h1>
+        <h1 className="section-title">CHOOSE YOUR BEST 5 HEROES</h1>
         <p className="section-subtitle">
-          Review player squads. 5 characters are required; any extra characters provide up to +3 bonus points.
+          Select your 5 primary combatants. All remaining heroes serve as Bonus Players (+10%–25% extra points based on character value).
         </p>
       </div>
 
@@ -36,8 +93,8 @@ export const TeamsStep: React.FC<TeamsStepProps> = ({
       <div className="player-tabs-bar">
         {players.map(p => {
           const isCurrent = p.id === activePlayer?.id;
-          const isComplete = p.roster.length >= MIN_TEAM_SIZE;
-          const extra = Math.max(0, p.roster.length - 5);
+          const isCoreReady = p.active && p.active.length === 5;
+          const bCount = Math.max(0, p.roster.length - 5);
           return (
             <button
               key={p.id}
@@ -51,15 +108,15 @@ export const TeamsStep: React.FC<TeamsStepProps> = ({
             >
               <PlayerAvatar name={p.name} color={p.color} size={28} />
               <span className="tab-name">{p.name}</span>
-              <span className={`tab-count ${isComplete ? 'complete' : 'incomplete'}`}>
-                {p.roster.length} Heroes {extra > 0 ? `(+${extra})` : ''}
+              <span className={`tab-count ${isCoreReady ? 'complete' : 'incomplete'}`}>
+                {p.active?.length || 0}/5 Core {bCount > 0 ? `(+${bCount} Bonus)` : ''}
               </span>
             </button>
           );
         })}
       </div>
 
-      {/* Active Player Roster Display (No individual scores revealed!) */}
+      {/* Active Player Roster Display */}
       {activePlayer && (
         <div className="roster-editor-card card mt-3">
           <div className="roster-editor-header">
@@ -68,7 +125,7 @@ export const TeamsStep: React.FC<TeamsStepProps> = ({
               <div>
                 <h3 className="editor-player-name">{activePlayer.name}&apos;s Squad</h3>
                 <span className="editor-meta">
-                  {activePlayer.roster.length} Characters Acquired • {money(activePlayer.spent)} Spent ({money(purse(activePlayer))} Left)
+                  {activePlayer.active?.length || 0} of 5 Core Chosen • {bonusCount} Bonus Heroes • {money(activePlayer.spent)} Spent ({money(purse(activePlayer))} Left)
                 </span>
               </div>
             </div>
@@ -76,38 +133,48 @@ export const TeamsStep: React.FC<TeamsStepProps> = ({
             <div className="bonus-summary-chip">
               <Sparkles size={16} className="text-yellow" />
               <span>
-                Extra Bonus:{' '}
-                <strong>
-                  +{Math.min(3.0, Math.max(0, activePlayer.roster.length - 5) * 1.0).toFixed(1)} Pts
-                </strong>{' '}
-                (Capped at 3.0)
+                {bonusCount} Bonus Heroes Active (+10%–25% value boost each)
               </span>
             </div>
           </div>
 
-          {/* Cards Grid (No points, no subcategories - purely character photo, name, franchise, price) */}
+          <div className="squad-instruction-banner">
+            <span>Tap any character to toggle between <strong>Best 5 Core</strong> and <strong>Bonus Bench</strong>.</span>
+            {activePlayer.active?.length !== 5 && (
+              <button
+                type="button"
+                className="btn btn-yellow btn-sm ml-2"
+                onClick={handleSelectFirst5}
+              >
+                Reset to First 5
+              </button>
+            )}
+          </div>
+
+          {/* Character Cards Grid (Strictly no hidden individual points shown!) */}
           <div className="roster-cards-grid mt-3">
             {activePlayer.roster.map((charId, idx) => {
               const c = CHAR_BY_ID[charId];
               if (!c) return null;
-              const isExtra = idx >= 5;
+              const isCore = activePlayer.active?.includes(charId);
               const price = activePlayer.prices[charId] || 0;
 
               return (
                 <div
                   key={charId}
-                  className={`roster-char-card ${isExtra ? 'is-extra-player' : 'is-core-player'}`}
+                  className={`roster-char-card ${isCore ? 'is-core-player' : 'is-extra-player'}`}
+                  onClick={() => handleToggleCharacter(charId)}
                 >
                   <div className="roster-char-thumb">
                     <CharacterImage character={c} size="md" />
-                    <span className={`status-badge ${isExtra ? 'extra-badge' : 'core-badge'}`}>
-                      {isExtra ? (
+                    <span className={`status-badge ${isCore ? 'core-badge-active' : 'extra-badge'}`}>
+                      {isCore ? (
                         <>
-                          <Sparkles size={11} /> Bonus Player (+1)
+                          <Check size={12} /> Best 5 Core
                         </>
                       ) : (
                         <>
-                          <Check size={11} /> Core Squad #{idx + 1}
+                          <Sparkles size={12} /> Bonus Hero
                         </>
                       )}
                     </span>
@@ -134,7 +201,7 @@ export const TeamsStep: React.FC<TeamsStepProps> = ({
         <button
           type="button"
           className="btn btn-red btn-lg btn-glow"
-          disabled={!allReady}
+          disabled={!allComplete}
           onClick={() => {
             sound.sold();
             onNext();
@@ -145,10 +212,10 @@ export const TeamsStep: React.FC<TeamsStepProps> = ({
         </button>
       </div>
 
-      {!allReady && (
+      {!allComplete && (
         <div className="error-banner center mt-2">
           <AlertCircle size={16} />
-          <span>Every player must have at least 5 heroes to calculate the verdict.</span>
+          <span>Every player must have exactly 5 heroes selected in their Best 5 Core.</span>
         </div>
       )}
     </div>

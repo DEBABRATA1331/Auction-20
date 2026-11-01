@@ -132,37 +132,42 @@ export const StoryModal: React.FC<StoryModalProps> = ({ scores, onClose }) => {
     ctx.letterSpacing = '3px';
     ctx.fillText('CHAMPIONSHIP SQUAD ROSTER', W / 2, 765);
 
-    const charList = winner.player.roster.map(id => CHAR_BY_ID[id]).filter(Boolean);
-    const startY = 810;
-    const itemHeight = 65;
+    // Sort so Best 5 Core appear first, followed by Bonus Heroes
+    const coreIds = winner.player.active || [];
+    const coreList = coreIds.map(id => CHAR_BY_ID[id]).filter(Boolean);
+    const bonusList = winner.player.roster.filter(id => !coreIds.includes(id)).map(id => CHAR_BY_ID[id]).filter(Boolean);
+    const allDisplayList = [...coreList, ...bonusList];
 
-    charList.forEach((c, idx) => {
+    const startY = 810;
+    const itemHeight = 62;
+
+    allDisplayList.forEach((c, idx) => {
       const y = startY + idx * itemHeight;
       if (y > 1250) return; // avoid overflow
 
-      const isExtra = idx >= 5;
+      const isBonus = !coreIds.includes(c.id);
 
       ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
       ctx.beginPath();
-      ctx.roundRect(140, y, W - 280, 52, 12);
+      ctx.roundRect(140, y, W - 280, 50, 12);
       ctx.fill();
 
       // Number / Badge
-      ctx.fillStyle = isExtra ? '#ffc21a' : '#e11d2e';
+      ctx.fillStyle = isBonus ? '#ffc21a' : '#e11d2e';
       ctx.font = '800 20px Outfit, sans-serif';
       ctx.textAlign = 'left';
-      ctx.fillText(isExtra ? `★ BONUS` : `#${idx + 1}`, 165, y + 33);
+      ctx.fillText(isBonus ? `★ BONUS` : `#${idx + 1} CORE`, 165, y + 32);
 
       // Character Name
       ctx.fillStyle = '#ffffff';
       ctx.font = '700 24px Outfit, sans-serif';
-      ctx.fillText(c.name, 280, y + 33);
+      ctx.fillText(c.name, 300, y + 32);
 
       // Franchise
       ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
       ctx.font = '600 20px Outfit, sans-serif';
       ctx.textAlign = 'right';
-      ctx.fillText(c.franchise, W - 170, y + 33);
+      ctx.fillText(c.franchise, W - 170, y + 32);
     });
 
     // 6. Overall Standings Mini-Table

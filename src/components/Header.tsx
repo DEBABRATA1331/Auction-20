@@ -1,5 +1,5 @@
 import React from 'react';
-import { Gavel, Volume2, VolumeX, RotateCcw, Users, Flame, Shield, Trophy } from 'lucide-react';
+import { Gavel, Volume2, VolumeX, Music, RotateCcw, Users, Flame, Shield, Trophy } from 'lucide-react';
 import { sound } from '../utils/audio';
 
 interface HeaderProps {
@@ -7,14 +7,16 @@ interface HeaderProps {
   onSelectStep?: (step: number) => void;
   canNavigateToStep?: (step: number) => boolean;
   soundEnabled: boolean;
+  musicEnabled: boolean;
   onToggleSound: () => void;
+  onToggleMusic: () => void;
   onResetGame: () => void;
 }
 
 const STEPS = [
   { id: 0, label: 'Players', icon: Users },
   { id: 1, label: 'Auction', icon: Flame },
-  { id: 2, label: 'Squads', icon: Shield },
+  { id: 2, label: 'Best 5', icon: Shield },
   { id: 3, label: 'Verdict', icon: Trophy },
 ];
 
@@ -23,7 +25,9 @@ export const Header: React.FC<HeaderProps> = ({
   onSelectStep,
   canNavigateToStep,
   soundEnabled,
+  musicEnabled,
   onToggleSound,
+  onToggleMusic,
   onResetGame,
 }) => {
   return (
@@ -72,6 +76,18 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Right utility buttons */}
         <div className="header-actions">
+          {/* Background Music Toggle */}
+          <button
+            type="button"
+            className={`icon-btn ${musicEnabled ? 'active-music' : ''}`}
+            onClick={onToggleMusic}
+            title={musicEnabled ? 'Stop Background Music' : 'Play Background Music'}
+            aria-label="Toggle background music"
+          >
+            <Music size={18} className={musicEnabled ? 'text-yellow' : ''} />
+          </button>
+
+          {/* Sound FX Toggle */}
           <button
             type="button"
             className="icon-btn"
@@ -79,7 +95,7 @@ export const Header: React.FC<HeaderProps> = ({
               onToggleSound();
               sound.click();
             }}
-            title={soundEnabled ? 'Mute Sound' : 'Enable Sound'}
+            title={soundEnabled ? 'Mute Sound FX' : 'Enable Sound FX'}
             aria-label="Sound toggle"
           >
             {soundEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />}

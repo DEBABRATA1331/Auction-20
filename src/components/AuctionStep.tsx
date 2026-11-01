@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Player, Character, ActionLog } from '../types/game';
-import { CHAR_BY_ID, purse, maxBid, money, BID_STEP, MIN_BID, MIN_TEAM_SIZE, MAX_ROSTER_SIZE } from '../game/rules';
+import { CHAR_BY_ID, purse, maxBid, money, BID_STEP, MIN_BID, MIN_TEAM_SIZE } from '../game/rules';
 import { CharacterImage } from './CharacterImage';
 import { PlayerAvatar } from './ui';
 import { Gavel, FastForward, Undo2, ArrowRight, Shield, Award, Sparkles, AlertCircle, Quote } from 'lucide-react';
@@ -53,15 +53,28 @@ export const AuctionStep: React.FC<AuctionStepProps> = ({
     const player = players.find(p => p.id === playerId);
     if (!player) return;
 
-    const allowed = maxBid(player);
-    const amount = customAmount !== undefined ? customAmount : (highBidderId ? Number((currentBid + BID_STEP).toFixed(2)) : MIN_BID);
+    const pPurse = purse(player);
+    const isSoloUncontested = highBidderId === null && pPurse < 1.00;
 
-    if (amount > allowed) {
-      sound.skip();
-      return;
+    let amount = customAmount !== undefined
+      ? customAmount
+      : (highBidderId ? Number((currentBid + BID_STEP).toFixed(2)) : MIN_BID);
+
+    // Rule: If balance is less than 1.00, player still can bid if no one else is bidding
+    if (isSoloUncontested) {
+      amount = Math.max(0, pPurse);
+    } else {
+      const allowed = maxBid(player);
+      if (amount > allowed) {
+        sound.skip();
+        return;
+      }
     }
 
     sound.bid();
+    if (amount >= 3.0) {
+      sound.tension();
+    }
     setCurrentBid(amount);
     setHighBidderId(playerId);
     setBidHistory(prev => [...prev, { playerId, amount }]);
@@ -99,7 +112,8 @@ export const AuctionStep: React.FC<AuctionStepProps> = ({
         if (p.id === winnerId) {
           const newRoster = [...p.roster, currentCharacter.id];
           const newPrices = { ...p.prices, [currentCharacter.id]: finalPrice };
-          const newActive = newRoster.slice(0, 5);
+          // Keep active as empty or up to 5; players will explicitly choose Best 5 in next step!
+          const newActive = p.active.length < 5 ? [...p.active, currentCharacter.id] : p.active;
           return {
             ...p,
             spent: Number((p.spent + finalPrice).toFixed(2)),
@@ -173,7 +187,7 @@ export const AuctionStep: React.FC<AuctionStepProps> = ({
             spent: Math.max(0, Number((p.spent - lastAction.amount).toFixed(2))),
             roster: newRoster,
             prices: newPrices,
-            active: newRoster.slice(0, 5),
+            active: p.active.filter(id => id !== lastAction.charId),
           };
         }
         return p;
@@ -227,11 +241,11 @@ export const AuctionStep: React.FC<AuctionStepProps> = ({
         <div className="auction-ready-status">
           {allEligible ? (
             <span className="badge-ready">
-              <Shield size={14} /> 5 Squad Requirement Met (Extra = Bonus)
+              <Shield size={14} /> 5 Core Reached (Unlimited Bonus Allowed)
             </span>
           ) : (
             <span className="badge-pending">
-              Need 5 characters per player
+              Need min 5 heroes per player
             </span>
           )}
         </div>
@@ -240,7 +254,7 @@ export const AuctionStep: React.FC<AuctionStepProps> = ({
       {/* Main Auction Work Area */}
       {!isDeckFinished && currentCharacter ? (
         <div className="auction-arena-grid">
-          {/* Left Column: Character Card (HIDDEN STATS & RARITY - GUESS WORK) */}
+          {/* Left Column: Character Card (HIDDEN STATS & RARITY) */}
           <div className="char-hero-card card">
             {stampAnimation && (
               <div className={`stamp-overlay ${stampAnimation.toLowerCase()}`}>
@@ -264,11 +278,11 @@ export const AuctionStep: React.FC<AuctionStepProps> = ({
               <div className="char-title-row">
                 <div>
                   <h2 className="char-name">{currentCharacter.name}</h2>
-                  <span className="char-franchise-sub">{currentCharacter.franchise} Universe</span>
+                  <span className="char-franchise-sub">{currentCharacter.franchise}</span>
                 </div>
               </div>
 
-              {/* Special Ability & Cartoon Lore (No subcategories or ratings shown!) */}
+              {/* Special Ability & Cartoon Lore */}
               <div className="ability-box">
                 <div className="ability-header">
                   <Sparkles size={16} className="text-yellow" />
@@ -302,10 +316,12 @@ export const AuctionStep: React.FC<AuctionStepProps> = ({
                   <span className="high-bidder-name">{highBidder.name} leads</span>
                 </div>
               ) : (
-                <span className="no-bidder-hint">Opening at minimum ₹{MIN_BID.toFixed(2)}</span>
+                <span className="no-bidder-hint">
+                  Opening at ₹{MIN_BID.toFixed(2)} (or balance if under ₹1.00 & uncontested)
+                </span>
               )}
 
-              {/* Quick Increment Chips (if high bidder exists) */}
+              {/* Quick Increment Chips */}
               {highBidderId && (
                 <div className="quick-inc-row">
                   <span className="inc-lbl">Raise:</span>
@@ -339,21 +355,26 @@ export const AuctionStep: React.FC<AuctionStepProps> = ({
               <span className="bidders-title">TAP PLAYER TO BID</span>
               <div className="bidders-grid">
                 {players.map(player => {
+                  const pPurse = purse(player);
+                  const isSoloUncontested = highBidderId === null && pPurse < 1.00;
                   const allowed = maxBid(player);
-                  const nextAmount = highBidderId ? Number((currentBid + BID_STEP).toFixed(2)) : MIN_BID;
-                  const canBid = allowed >= nextAmount && player.roster.length < MAX_ROSTER_SIZE;
+                  const standardNext = highBidderId ? Number((currentBid + BID_STEP).toFixed(2)) : MIN_BID;
+
+                  // Rule: If balance < 1.00, player can bid if no one else is bidding
+                  const canBid = isSoloUncontested || (allowed >= standardNext);
                   const isLeading = player.id === highBidderId;
+                  const nextAmount = isSoloUncontested ? pPurse : standardNext;
 
                   const extraCount = Math.max(0, player.roster.length - 5);
-                  const squadDisplay = player.roster.length <= 5
-                    ? `${player.roster.length}/5 Squad`
-                    : `5 (+${extraCount} Bonus)`;
+                  const squadDisplay = player.roster.length < 5
+                    ? `${player.roster.length}/5 Core`
+                    : `5 Core + ${extraCount} Bonus`;
 
                   return (
                     <button
                       key={player.id}
                       type="button"
-                      className={`bidder-card ${isLeading ? 'leading' : ''}`}
+                      className={`bidder-card ${isLeading ? 'leading' : ''} ${isSoloUncontested ? 'solo-bidder' : ''}`}
                       style={{ '--p-color': player.color } as React.CSSProperties}
                       disabled={!canBid}
                       onClick={() => handlePlaceBid(player.id, nextAmount)}
@@ -362,7 +383,7 @@ export const AuctionStep: React.FC<AuctionStepProps> = ({
                         <PlayerAvatar name={player.name} color={player.color} size={32} />
                         <div className="bidder-meta">
                           <span className="bidder-name">{player.name}</span>
-                          <span className="bidder-purse">{money(purse(player))} left</span>
+                          <span className="bidder-purse">{money(pPurse)} left</span>
                         </div>
                       </div>
 
@@ -371,7 +392,13 @@ export const AuctionStep: React.FC<AuctionStepProps> = ({
                           {squadDisplay}
                         </span>
                         <span className="bid-tap-action">
-                          {isLeading ? 'LEADING' : canBid ? `Bid ${money(nextAmount)}` : 'OUT'}
+                          {isLeading
+                            ? 'LEADING'
+                            : isSoloUncontested
+                            ? `Bid ${money(pPurse)}`
+                            : canBid
+                            ? `Bid ${money(nextAmount)}`
+                            : 'OUT'}
                         </span>
                       </div>
                     </button>
@@ -419,7 +446,7 @@ export const AuctionStep: React.FC<AuctionStepProps> = ({
           <Award size={48} className="text-yellow mb-3" />
           <h2 className="finished-title">Auction Concluded</h2>
           <p className="finished-desc">
-            All character lots processed. Every player must have at least 5 heroes. Extra heroes grant bonus points (up to +3).
+            All character lots processed. Now players select their Best 5 Core heroes while all remaining characters become high-yield Bonus Players.
           </p>
           <div className="finished-actions">
             {skipped.length > 0 && (
@@ -440,7 +467,7 @@ export const AuctionStep: React.FC<AuctionStepProps> = ({
                 onNext();
               }}
             >
-              <span>Review Squads</span>
+              <span>Choose Best 5 Heroes</span>
               <ArrowRight size={20} />
             </button>
           </div>
@@ -453,10 +480,10 @@ export const AuctionStep: React.FC<AuctionStepProps> = ({
         </div>
       )}
 
-      {/* Persistent Bottom Squads Inspector */}
+      {/* Bottom Squads Overview */}
       <div className="squads-summary-tray card mt-4">
         <div className="squads-tray-head">
-          <span className="tray-title">PLAYER SQUADS (5 REQUIRED • EXTRA = BONUS)</span>
+          <span className="tray-title">PLAYER SQUADS (5 CORE REQUIRED • UNLIMITED BONUS HEROES)</span>
           {allEligible && (
             <button
               type="button"
@@ -466,7 +493,7 @@ export const AuctionStep: React.FC<AuctionStepProps> = ({
                 onNext();
               }}
             >
-              <span>Review Squads & Proceed</span>
+              <span>Choose Best 5 & Proceed</span>
               <ArrowRight size={16} />
             </button>
           )}
@@ -481,29 +508,29 @@ export const AuctionStep: React.FC<AuctionStepProps> = ({
                   <PlayerAvatar name={p.name} color={p.color} size={24} />
                   <span className="squad-mini-name">{p.name}</span>
                   {extra > 0 && (
-                    <span className="extra-bonus-tag">+{extra} Bonus Player</span>
+                    <span className="extra-bonus-tag">+{extra} Bonus Heroes</span>
                   )}
                   <span className="squad-mini-spent">{money(p.spent)} spent</span>
                 </div>
                 <div className="squad-mini-slots">
-                  {Array.from({ length: MAX_ROSTER_SIZE }).map((_, slotIdx) => {
-                    const charId = p.roster[slotIdx];
-                    const c = charId ? CHAR_BY_ID[charId] : null;
-                    const isExtraSlot = slotIdx >= 5;
+                  {p.roster.map((charId, idx) => {
+                    const c = CHAR_BY_ID[charId];
+                    const isExtraSlot = idx >= 5;
                     return (
                       <div
-                        key={slotIdx}
-                        className={`squad-slot-tile ${c ? 'filled' : 'empty'} ${isExtraSlot ? 'bonus-slot' : ''}`}
-                        title={c ? `${c.name} (${money(p.prices[c.id] || 0)})` : isExtraSlot ? `Bonus Slot #${slotIdx - 4}` : `Required #${slotIdx + 1}`}
+                        key={idx}
+                        className={`squad-slot-tile filled ${isExtraSlot ? 'bonus-slot' : ''}`}
+                        title={c ? `${c.name} (${money(p.prices[c.id] || 0)})` : ''}
                       >
-                        {c ? (
-                          <CharacterImage character={c} size="sm" />
-                        ) : (
-                          <span className="slot-empty-num">{isExtraSlot ? `+B` : slotIdx + 1}</span>
-                        )}
+                        {c && <CharacterImage character={c} size="sm" />}
                       </div>
                     );
                   })}
+                  {Array.from({ length: Math.max(0, 5 - p.roster.length) }).map((_, slotIdx) => (
+                    <div key={`empty-${slotIdx}`} className="squad-slot-tile empty">
+                      <span className="slot-empty-num">{p.roster.length + slotIdx + 1}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
             );

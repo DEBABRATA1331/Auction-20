@@ -147,16 +147,20 @@ export const ResultsStep: React.FC<ResultsStepProps> = ({
           {/* Winner's Roster (Character image and name only - NO individual scores!) */}
           <div className="winner-lineup">
             <span className="lineup-label">
-              CHAMPIONSHIP SQUAD ({winner.player.roster.length} HEROES)
+              CHAMPIONSHIP SQUAD ({winner.player.active?.length || 5} CORE • {Math.max(0, winner.player.roster.length - 5)} BONUS HEROES)
             </span>
             <div className="winner-lineup-grid">
               {winner.player.roster.map(id => {
                 const c = CHAR_BY_ID[id];
                 if (!c) return null;
+                const isCore = winner.player.active?.includes(id);
                 return (
-                  <div key={id} className="winner-char-thumb" title={c.name}>
+                  <div key={id} className={`winner-char-thumb ${isCore ? 'thumb-core' : 'thumb-bonus'}`} title={c.name}>
                     <CharacterImage character={c} size="md" />
                     <span className="winner-thumb-name">{c.name}</span>
+                    <span className={`winner-thumb-role ${isCore ? 'role-core' : 'role-bonus'}`}>
+                      {isCore ? 'Core' : 'Bonus'}
+                    </span>
                   </div>
                 );
               })}

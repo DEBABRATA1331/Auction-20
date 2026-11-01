@@ -5,7 +5,7 @@ export const TOTAL_BUDGET = 20.0;
 export const MIN_BID = 1.0;
 export const BID_STEP = 0.25;
 export const MIN_TEAM_SIZE = 5;
-export const MAX_ROSTER_SIZE = 8;
+export const MAX_ROSTER_SIZE = 50; // Unlimited bonus players allowed
 
 export const PLAYER_COLORS = [
   '#e11d2e', // Red
@@ -26,19 +26,27 @@ export function purse(player: Player): number {
 }
 
 /**
- * Calculates max allowable bid for player so they can still field at least MIN_TEAM_SIZE (5) characters.
- * Each required future character requires at least MIN_BID (₹1.00).
+ * Calculates max allowable bid for player.
+ * If player has fewer than 5 characters, reserves ₹1 for remaining future mandatory slots.
  */
 export function maxBid(player: Player): number {
-  if (player.roster.length >= MAX_ROSTER_SIZE) return 0;
-  
   const currentPurse = purse(player);
   const slotsAfterThis = player.roster.length + 1;
   const remainingSlotsNeeded = Math.max(0, MIN_TEAM_SIZE - slotsAfterThis);
   const reserveNeeded = remainingSlotsNeeded * MIN_BID;
   
   const allowed = Math.floor((currentPurse - reserveNeeded) * 100) / 100;
-  return allowed >= MIN_BID ? allowed : 0;
+  return Math.max(0, allowed);
+}
+
+/**
+ * Bonus point percentage rule:
+ * Bonus player provides 10% to 25% of their real value (rating), depending on character rarity/strength.
+ */
+export function getCharacterBonusPoints(c: Character): number {
+  // Scale dynamically from 10% (for rating 10) to 25% (for rating 25)
+  const pct = 0.10 + Math.max(0, Math.min(1, (c.totalRating - 10) / 15)) * 0.15;
+  return Number((c.totalRating * pct).toFixed(2));
 }
 
 export function money(amount: number): string {
